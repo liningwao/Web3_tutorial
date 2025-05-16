@@ -8,12 +8,12 @@ import {AggregatorV3Interface} from "@chainlink/contracts/src/v0.8/shared/interf
 // 4. 在锁定期内，没有达到目标值，投资人在锁定期以后退款
 contract FundMe{
 
-    AggregatorV3Interface internal dataFeed;
+    AggregatorV3Interface public dataFeed;
     mapping(address => uint256) public fundersToAmount;
     //每次最小为100美元
-    uint256 constant  MININUM_VALUE = 100 * 10 ** 18; //wei
+    uint256 constant  MININUM_VALUE = 100 * 10 ** 18; 
     //总额为1000美元
-    uint256 constant  TARGET = 1000 * 10 ** 18; //wei
+    uint256 constant  TARGET = 1000 * 10 ** 18; 
     address public owner;
     bool public success;
     uint256 public deploymentTimestamp;
@@ -25,10 +25,14 @@ contract FundMe{
     //getFund结束标志
     bool public getFundSuccess =  false;
 
-    constructor(uint256 _lockTime){
+    event FundWithdrawByOwner(uint256);
+    event ReFundByFunder(address,uint256);
+
+    constructor(uint256 _lockTime, address dataFeedAddr){
         owner = msg.sender;
         //sepolia testnet ETH/USD
-        dataFeed = AggregatorV3Interface(0x694AA1769357215DE4FAC081bf1f309aDC325306);
+        //0x694AA1769357215DE4FAC081bf1f309aDC325306
+        dataFeed = AggregatorV3Interface(dataFeedAddr);
         deploymentTimestamp = block.timestamp;
         lockTime= _lockTime;
 
@@ -66,9 +70,13 @@ contract FundMe{
         //success = payable(msg.sender).send(address(this).balance);
         //require(success,"transfer failed");
         //3.call
-        (success,) = payable(msg.sender).call{value:address(this).balance}("");
+
+        uint256 balance = address(this).balance;
+        (success,) = payable(msg.sender).call{value: balance}("");
         require(success,"transfer failed");
         getFundSuccess = true;
+
+        emit FundWithdrawByOwner(balance);
 
     }
     function transferOwnership(address newOwner) public onlyOwner{
@@ -81,9 +89,11 @@ contract FundMe{
         //请求退款的人必须是捐助者
         require(fundersToAmount[msg.sender] > 0,"There is no fund for you");
         bool reFundSuccess;
-        (reFundSuccess,) = payable(msg.sender).call{value:fundersToAmount[msg.sender]}("");
+        uint256 balance = fundersToAmount[msg.sender];
+        (reFundSuccess,) = payable(msg.sender).call{value:balance}("");
         require(reFundSuccess,"transfer failed");
         fundersToAmount[msg.sender] = 0;
+        emit ReFundByFunder(msg.sender,balance);
     }
     //修改funder对应的ETH数量
     function setFunderToAmount (address funder,uint256 amountToUpdate) external {
